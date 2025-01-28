@@ -7,7 +7,7 @@ from typing import List
 app = FastAPI()
 
 # MongoDB connection setup
-client = MongoClient("mongodb://localhost:27017/")  # Adjust if using MongoDB Atlas or different URL
+client = MongoClient("mongodb://localhost:27017/claim_management")  # Adjust if using MongoDB Atlas or different URL
 db = client.claims_db  # Select the database
 claims_collection = db.claims  # Select the 'claims' collection
 users_collection = db.users  # Select the 'users' collection
@@ -16,7 +16,6 @@ users_collection = db.users  # Select the 'users' collection
 class Claim(BaseModel):
     description: str
     status: str
-    created_at: str = None  # Optional field
 
 class User(BaseModel):
     name: str

@@ -5,7 +5,7 @@ from pymongo import MongoClient
 from typing import List
 from pymongo.errors import PyMongoError
 from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import start_http_server
+# from prometheus_client import start_http_server
 
 # FastAPI initialization
 app = FastAPI()
@@ -120,6 +120,6 @@ instrumentator = Instrumentator()
 instrumentator.instrument(app).expose(app)
 
 # Run the Prometheus HTTP server on a different port for monitoring (optional)
-start_http_server(8000)  # This runs Prometheus server on port 8000
+# start_http_server(8000)  # This runs Prometheus server on port 8000
 
 

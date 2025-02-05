@@ -122,4 +122,3 @@ instrumentator.instrument(app).expose(app)
 # Run the Prometheus HTTP server on a different port for monitoring (optional)
 start_http_server(8000)  # This runs Prometheus server on port 8000
 
-

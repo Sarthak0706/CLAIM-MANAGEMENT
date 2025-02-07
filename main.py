@@ -10,115 +10,140 @@ from prometheus_client import start_http_server
 # FastAPI initialization
 app = FastAPI()
 
-# Add CORS middleware here
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (you can restrict to specific domains in production)
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods (GET, POST, PUT, DELETE, etc.)
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # MongoDB connection setup
-client = MongoClient("mongodb://localhost:27017/claim_management")  # Adjust if using MongoDB Atlas or different URL
-db = client.claims_db  # Select the database
-claims_collection = db.claims  # Select the 'claims' collection
-users_collection = db.users  # Select the 'users' collection
+client = MongoClient("mongodb://localhost:27017/")
+db = client.claims_db
+claims_collection = db.claims
+users_collection = db.users
+policies_collection = db.policies
 
-# Pydantic models for data validation
+# ==============================
+# 🚀 Pydantic Models for Validation
+# ==============================
 class Claim(BaseModel):
     description: str
     status: str
+    amount: float  # Add claim amount
+    policyNumber: str  # Link claim to a policy
 
 class User(BaseModel):
+    id: str  # Add 'id' field
     name: str
-    email: EmailStr  # Ensures valid email format
+    email: EmailStr
 
-# Home endpoint
-@app.get("/")
-def read_root():
-    return {"message": "Claims Management System"}
+class Policy(BaseModel):
+    policyNumber: str
+    policyType: str
+    amount: float  # Policy amount
 
-# Check for duplicate claim by description
+# ==============================
+# 🚀 Duplicate Check Functions
+# ==============================
 def is_duplicate_claim(description: str) -> bool:
     return claims_collection.find_one({"description": description}) is not None
 
-# Check for duplicate user by email
 def is_duplicate_user(email: str) -> bool:
     return users_collection.find_one({"email": email}) is not None
 
-# Create a new claim with custom error handling and duplicate check
+def is_duplicate_policy(policyNumber: str) -> bool:
+    return policies_collection.find_one({"policyNumber": policyNumber}) is not None
+
+# ==============================
+# 🚀 CRUD for Claims
+# ==============================
 @app.post("/claims", response_model=Claim)
 def create_claim(claim: Claim):
     try:
-        # Check for duplicate claim
         if is_duplicate_claim(claim.description):
             raise HTTPException(status_code=400, detail="Claim with the same description already exists.")
+
+        policy = policies_collection.find_one({"policyNumber": claim.policyNumber})
+        if not policy:
+            raise HTTPException(status_code=404, detail="Policy not found.")
         
-        # If no duplicate, insert the claim into the database
+        if claim.amount > policy["amount"]:
+            raise HTTPException(status_code=400, detail="Claim amount exceeds policy amount.")
+        
         claim_dict = claim.dict()
         result = claims_collection.insert_one(claim_dict)
-        claim_dict["_id"] = str(result.inserted_id)  # Convert ObjectId to string for return
+        claim_dict["_id"] = str(result.inserted_id)
         return claim_dict
     except PyMongoError as e:
-        # Custom MongoDB error handling
-        raise HTTPException(status_code=500, detail=f"An error occurred while creating the claim: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating claim: {str(e)}")
 
-# Get all claims with custom error handling
 @app.get("/claims", response_model=List[Claim])
 def get_claims():
     try:
         claims = claims_collection.find()
-        claim_list = []
-        for claim in claims:
-            # Ensure 'description' and 'status' exist, add default if missing
-            if 'description' not in claim or 'status' not in claim:
-                continue  # Skip claims that do not have required fields
-
-            claim["_id"] = str(claim["_id"])  # Convert ObjectId to string for return
-            claim_list.append(claim)
-        return claim_list
+        return [{"_id": str(claim["_id"]), **claim} for claim in claims]
     except PyMongoError as e:
-        # Custom MongoDB error handling
-        raise HTTPException(status_code=500, detail=f"An error occurred while retrieving claims: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving claims: {str(e)}")
 
-# Create a new user with custom error handling and duplicate check
+# ==============================
+# 🚀 CRUD for Users
+# ==============================
 @app.post("/users", response_model=User)
 def create_user(user: User):
     try:
-        # Check for duplicate user
         if is_duplicate_user(user.email):
             raise HTTPException(status_code=400, detail="User with the same email already exists.")
         
-        # If no duplicate, insert the user into the database
         user_dict = user.dict()
         result = users_collection.insert_one(user_dict)
-        user_dict["_id"] = str(result.inserted_id)  # Convert ObjectId to string for return
+        user_dict["_id"] = str(result.inserted_id)
         return user_dict
     except PyMongoError as e:
-        # Custom MongoDB error handling
-        raise HTTPException(status_code=500, detail=f"An error occurred while creating the user: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating user: {str(e)}")
 
-# Get all users with custom error handling
 @app.get("/users", response_model=List[User])
 def get_users():
     try:
         users = users_collection.find()
-        user_list = []
-        for user in users:
-            user["_id"] = str(user["_id"])  # Convert ObjectId to string for return
-            user_list.append(user)
-        return user_list
+        return [{"_id": str(user["_id"]), **user} for user in users]
     except PyMongoError as e:
-        # Custom MongoDB error handling
-        raise HTTPException(status_code=500, detail=f"An error occurred while retrieving users: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving users: {str(e)}")
 
-# Prometheus Metrics Exporter
+# ==============================
+# 🚀 CRUD for Policies
+# ==============================
+@app.post("/policies")
+def create_policy(policy: Policy):
+    try:
+        if is_duplicate_policy(policy.policyNumber):
+            raise HTTPException(status_code=400, detail="Policy with this number already exists.")
+
+        if policy.amount <= 0:
+            raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
+        
+        policy_dict = policy.dict()
+        result = policies_collection.insert_one(policy_dict)
+        policy_dict["_id"] = str(result.inserted_id)
+        return policy_dict
+    except PyMongoError as e:
+        raise HTTPException(status_code=500, detail=f"Error creating policy: {str(e)}")
+
+# ==============================
+# 🚀 Prometheus Monitoring
+# ==============================
 instrumentator = Instrumentator()
-
-# This will automatically create a /metrics endpoint where Prometheus can scrape the metrics
 instrumentator.instrument(app).expose(app)
+start_http_server(8000)
 
-# Run the Prometheus HTTP server on a different port for monitoring (optional)
-start_http_server(8000)  # This runs Prometheus server on port 8000
+# ==============================
+# 🚀 Root Endpoint
+# ==============================
+@app.get("/")
+def read_root():
+    return {"message": "Claims Management System"}
+
+
 
